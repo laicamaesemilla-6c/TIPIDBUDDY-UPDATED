@@ -44,8 +44,7 @@
         }
       ],
       "expo-sharing",
-      "expo-secure-store",
-      "expo-web-browser"
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {

@@ -18,7 +18,9 @@ import { COLORS, SPACING } from '@constants/index';
 import { formatPesoAmount } from '@utils/index';
 import * as Haptics from 'expo-haptics';
 import { MaterialIcons } from '@expo/vector-icons';
-import Swipeable from 'react-native-gesture-handler/Swipeable';
+import Swipeable, {
+  type SwipeableMethods,
+} from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { SelectStoreSheet } from '@components/SelectStoreSheet';
 import { persistCompletedCart, persistPurchaseHistory } from '../api/sync';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,7 +44,7 @@ export const CartDetailScreen = ({ route, navigation }: any) => {
   const [isSavingTrip, setIsSavingTrip] = useState(false);
   const savingTrip = useRef(false);
   const completionTriggered = useRef(false);
-  const openedSwipeableRef = useRef<Swipeable | null>(null);
+  const openedSwipeableRef = useRef<SwipeableMethods | null>(null);
 
   if (cart && categoryOrderRef.current?.cartId !== cart.id) {
     categoryOrderRef.current = {
@@ -750,25 +752,30 @@ export const CartDetailScreen = ({ route, navigation }: any) => {
             <Text style={styles.categoryCount}>({section.data.length})</Text>
           </View>
         )}
-        renderItem={({ item }) => (
+        renderItem={({ item }) => {
+          let swipeableMethods: SwipeableMethods | null = null;
+          return (
           <Swipeable
+            ref={(methods) => {
+              swipeableMethods = methods;
+            }}
             childrenContainerStyle={styles.swipeableForeground}
             friction={1.5}
             rightThreshold={82}
             overshootRight={false}
             enabled={!cart.isCompleted}
-            onSwipeableOpen={(direction, swipeable) => {
+            onSwipeableOpen={(direction) => {
               if (direction !== 'left') return;
               if (
                 openedSwipeableRef.current &&
-                openedSwipeableRef.current !== swipeable
+                openedSwipeableRef.current !== swipeableMethods
               ) {
                 openedSwipeableRef.current.close();
               }
-              openedSwipeableRef.current = swipeable;
+              openedSwipeableRef.current = swipeableMethods;
             }}
-            onSwipeableClose={(_direction, swipeable) => {
-              if (openedSwipeableRef.current === swipeable) {
+            onSwipeableClose={() => {
+              if (openedSwipeableRef.current === swipeableMethods) {
                 openedSwipeableRef.current = null;
               }
             }}
@@ -900,7 +907,8 @@ export const CartDetailScreen = ({ route, navigation }: any) => {
             </View>
           </View>
           </Swipeable>
-        )}
+          );
+        }}
       />
 
       {actionBar}

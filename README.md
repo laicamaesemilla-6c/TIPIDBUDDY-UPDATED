@@ -76,7 +76,6 @@ Create a web service on Render or Railway using this repository, with `backend` 
 | `MONGODB_DATABASE` | `Tipidbuddy-II` |
 | `PORT` | Use the port assigned by the hosting provider; set `5000` for local development |
 | `AUTH_JWT_SECRET` | Random secret of at least 32 characters, used to sign account sessions |
-| `GOOGLE_OAUTH_CLIENT_IDS` | Comma-separated Google OAuth client IDs accepted by the backend |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | SMTP settings required to deliver password-reset emails |
 | `PASSWORD_RESET_URL` | Optional reset link base; defaults to `tipidbuddy://reset-password` |
 
@@ -86,9 +85,9 @@ Set the hosting service's health-check path to `/api/health`. The API refuses to
 
 The app remains usable as a guest. Accounts use the backend's `accounts` collection; passwords are hashed on the server, and the app stores its signed session in Android/iOS secure storage. Signing in does not delete or migrate local carts. The existing app-data API is not account-scoped, so account sign-in currently does not enable per-user cloud synchronization.
 
-Email registration and login require `AUTH_JWT_SECRET` on the backend. To enable Google sign-in, create Google OAuth client IDs for the app's Android package (`com.tipidbuddy.app`), iOS bundle ID (`com.tipidbuddy.app`), and web client as applicable. Set the corresponding `EXPO_PUBLIC_GOOGLE_*_CLIENT_ID` values in the root `.env` for local builds and in EAS for production builds. Set the same accepted client IDs, comma-separated, as `GOOGLE_OAUTH_CLIENT_IDS` on the backend.
+Email registration and login require `AUTH_JWT_SECRET` on the backend.
 
-Generate the backend JWT secret with `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` and store it only in the backend hosting environment. The Android Google OAuth client must match the package ID and the SHA-1 fingerprint for the Android signing key used for the APK.
+Generate the backend JWT secret with `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` and store it only in the backend hosting environment.
 
 Password-reset requests require a working SMTP account with a verified sender; configure the SMTP variables above. The default email link opens the app's `tipidbuddy://reset-password` route. Set `PASSWORD_RESET_URL` only if you have a verified alternate deep-link destination. Never place backend JWT or SMTP secrets in the mobile `.env` or EAS variables.
 

@@ -3,11 +3,9 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
-const { OAuth2Client } = require('google-auth-library');
 const Account = require('../models/Account');
 
 const router = express.Router();
-const googleClient = new OAuth2Client();
 const requestLog = new Map();
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASSWORD_MIN_LENGTH = 8;
@@ -106,57 +104,6 @@ router.post('/login', rateLimit('login', 12, 15 * 60 * 1000), async (req, res) =
     res.json({ success: true, ...createSession(account) });
   } catch (error) {
     handleAuthError(res, error, 'login');
-  }
-});
-
-router.post('/google', rateLimit('google', 12, 15 * 60 * 1000), async (req, res) => {
-  const idToken = req.body?.idToken;
-  const audiences = (process.env.GOOGLE_OAUTH_CLIENT_IDS || '')
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean);
-  if (audiences.length === 0) {
-    return res.status(503).json({
-      success: false,
-      message: 'Google sign-in is not configured. Set GOOGLE_OAUTH_CLIENT_IDS on the backend.',
-    });
-  }
-  if (typeof idToken !== 'string' || !idToken) {
-    return res.status(400).json({ success: false, message: 'A Google ID token is required.' });
-  }
-
-  let claims;
-  try {
-    const ticket = await googleClient.verifyIdToken({ idToken, audience: audiences });
-    claims = ticket.getPayload();
-  } catch (error) {
-    console.warn('[Auth] Google token verification rejected:', error.message);
-    return res.status(401).json({ success: false, message: 'Google sign-in could not be verified.' });
-  }
-  if (!claims?.sub || !claims.email || claims.email_verified !== true) {
-    return res.status(401).json({ success: false, message: 'Google could not verify this account.' });
-  }
-
-  try {
-    getJwtSecret();
-    const email = normalizeEmail(claims.email);
-    let account = await Account.findOne({ $or: [{ email }, { googleSubject: claims.sub }] })
-      .select('+googleSubject');
-    if (account && account.googleSubject && account.googleSubject !== claims.sub) {
-      return res.status(409).json({ success: false, message: 'This email is linked to a different Google account.' });
-    }
-    if (!account) {
-      account = await Account.create({ email, googleSubject: claims.sub });
-    } else if (!account.googleSubject) {
-      account.googleSubject = claims.sub;
-      await account.save();
-    }
-    res.json({ success: true, ...createSession(account) });
-  } catch (error) {
-    if (error.code === 11000) {
-      return res.status(409).json({ success: false, message: 'This Google account is already in use.' });
-    }
-    handleAuthError(res, error, 'Google sign-in');
   }
 });
 

@@ -120,6 +120,9 @@ export const VoiceInputModal = ({ route, navigation }: any) => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [webViewReady, setWebViewReady] = useState(false);
   const [micScale] = useState(new Animated.Value(1));
+  const waveLevels = useRef(
+    Array.from({ length: 5 }, (_, index) => new Animated.Value(index % 2 ? 0.28 : 0.42))
+  ).current;
   const listenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recognizedTextRef = useRef('');
   const hasFinalResultRef = useRef(false);
@@ -136,14 +139,14 @@ export const VoiceInputModal = ({ route, navigation }: any) => {
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(micScale, {
-          toValue: 1.18,
-          duration: 600,
+          toValue: 1.05,
+          duration: 900,
           easing: Easing.ease,
           useNativeDriver: true,
         }),
         Animated.timing(micScale, {
           toValue: 1,
-          duration: 600,
+          duration: 900,
           easing: Easing.ease,
           useNativeDriver: true,
         }),
@@ -152,6 +155,36 @@ export const VoiceInputModal = ({ route, navigation }: any) => {
     loop.start();
     return () => loop.stop();
   }, [status, micScale]);
+
+  useEffect(() => {
+    if (status !== 'listening') {
+      waveLevels.forEach((level) => level.setValue(0.24));
+      return;
+    }
+
+    const waveAnimations = waveLevels.map((level, index) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(index * 90),
+          Animated.timing(level, {
+            toValue: 1,
+            duration: 360,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(level, {
+            toValue: 0.22,
+            duration: 480,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.delay((waveLevels.length - index - 1) * 90),
+        ])
+      )
+    );
+    waveAnimations.forEach((animation) => animation.start());
+    return () => waveAnimations.forEach((animation) => animation.stop());
+  }, [status, waveLevels]);
 
   useEffect(() => {
     return () => {
@@ -293,8 +326,10 @@ export const VoiceInputModal = ({ route, navigation }: any) => {
         <View style={[styles.header, { paddingTop: insets.top + SPACING.sm }]}>
           <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <MaterialIcons name="close" size={22} color={theme.text} />
+            <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Add by Voice</Text>
+          <View style={styles.headerPlaceholder} />
         </View>
         <View style={styles.permissionBox}>
           <Text style={styles.permissionText}>
@@ -321,22 +356,38 @@ export const VoiceInputModal = ({ route, navigation }: any) => {
           accessibilityLabel="Back to cart"
         >
           <MaterialIcons name="close" size={22} color={theme.text} />
+          <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Add by Voice</Text>
+        <View style={styles.headerPlaceholder} />
       </View>
 
       <ScrollView style={styles.content} contentContainerStyle={styles.contentInner}>
         <View style={styles.instructionBlock}>
-          <Text style={styles.instructionTitle}>Try saying</Text>
-          <Text style={styles.exampleText}>"eggs"</Text>
-          <Text style={styles.exampleText}>"3 chicken breast"</Text>
-          <Text style={styles.exampleText}>"rice 150"</Text>
+          <Text style={styles.instructionEyebrow}>VOICE ENTRY</Text>
+          <Text style={styles.instructionTitle}>What would you like to add?</Text>
+          <Text style={styles.instructionDescription}>
+            Say the product name, quantity, and an optional price.
+          </Text>
+          <View style={styles.exampleList}>
+            <View style={styles.exampleChip}>
+              <Text style={styles.exampleText}>eggs</Text>
+            </View>
+            <View style={styles.exampleChip}>
+              <Text style={styles.exampleText}>3 chicken breast</Text>
+            </View>
+            <View style={styles.exampleChip}>
+              <Text style={styles.exampleText}>rice 150</Text>
+            </View>
+          </View>
         </View>
 
         {recognizedText ? (
           <View style={styles.transcriptBox}>
-            <Text style={styles.transcriptLabel}>Heard:</Text>
-            <Text style={styles.transcriptText}>"{recognizedText}"</Text>
+            <Text style={styles.transcriptLabel}>
+              {status === 'listening' ? 'LIVE TRANSCRIPTION' : 'YOU SAID'}
+            </Text>
+            <Text style={styles.transcriptText}>{recognizedText}</Text>
           </View>
         ) : null}
 
@@ -354,14 +405,48 @@ export const VoiceInputModal = ({ route, navigation }: any) => {
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, SPACING.lg) }]}>
+        <View style={styles.statusBlock}>
+          <View
+            style={[
+              styles.statusIndicator,
+              status === 'listening' && styles.statusIndicatorActive,
+              status === 'error' && styles.statusIndicatorError,
+            ]}
+          />
+          <Text
+            style={[
+              styles.statusTitle,
+              status === 'listening' && styles.statusTitleActive,
+              status === 'error' && styles.statusTitleError,
+            ]}
+          >
+            {status === 'listening'
+              ? 'Listening'
+              : status === 'processing'
+                ? 'Processing'
+                : status === 'error'
+                  ? 'Try again'
+                  : parsedItem?.name
+                    ? 'Item details ready'
+                    : 'Ready to record'}
+          </Text>
+        </View>
         <Text style={styles.micText}>
           {status === 'listening'
-            ? 'Listening… Tap the microphone to stop'
+            ? 'Speak now, then tap Stop recording'
             : status === 'processing'
-              ? 'Processing…'
-              : errorMessage || "Didn't catch that — tap mic to retry"}
+              ? 'Preparing the item details'
+              : status === 'error'
+                ? 'Tap Start recording to try again'
+                : 'Tap Start recording and say the item details'}
         </Text>
         <Animated.View style={[styles.micPulse, { transform: [{ scale: micScale }] }]}>
+          <View
+            style={[
+              styles.micHalo,
+              status === 'listening' && styles.micHaloActive,
+            ]}
+          />
           <TouchableOpacity
             style={[styles.micButton, status === 'listening' && styles.micButtonActive]}
             onPress={() => {
@@ -375,17 +460,32 @@ export const VoiceInputModal = ({ route, navigation }: any) => {
             <MaterialIcons
               name={status === 'listening' ? 'mic-off' : 'mic'}
               size={30}
-              color={theme.primary}
+              color={theme.isDark ? '#111827' : '#FFFFFF'}
             />
           </TouchableOpacity>
         </Animated.View>
+        <View style={styles.waveform} accessibilityLabel={status === 'listening' ? 'Listening' : undefined}>
+          {waveLevels.map((level, index) => (
+            <Animated.View
+              key={index}
+              style={[
+                styles.waveBar,
+                status === 'listening' && styles.waveBarActive,
+                { transform: [{ scaleY: level }] },
+              ]}
+            />
+          ))}
+        </View>
+        <Text style={styles.recordButtonLabel}>
+          {status === 'listening' ? 'Stop recording' : 'Start recording'}
+        </Text>
         <TouchableOpacity
           style={[styles.confirmButton, !parsedItem?.name && styles.confirmButtonDisabled]}
           onPress={handleUseThis}
           disabled={!parsedItem?.name}
           accessibilityRole="button"
         >
-          <Text style={styles.confirmButtonText}>Dictate items to add</Text>
+          <Text style={styles.confirmButtonText}>Use detected item</Text>
         </TouchableOpacity>
       </View>
 
@@ -409,27 +509,43 @@ export const VoiceInputModal = ({ route, navigation }: any) => {
 const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.surface,
+    backgroundColor: theme.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.md,
+    justifyContent: 'space-between',
+    paddingBottom: SPACING.md,
     paddingHorizontal: SPACING.lg,
     backgroundColor: theme.surface,
     gap: SPACING.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.border,
   },
   backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    minWidth: 78,
+    height: 40,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: 12,
     backgroundColor: theme.inputBackground,
     justifyContent: 'center',
     alignItems: 'center',
+    flexDirection: 'row',
+    gap: 2,
+  },
+  cancelButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.textSecondary,
+  },
+  headerPlaceholder: {
+    width: 78,
   },
   title: {
-    fontSize: 18,
-    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 17,
+    fontWeight: '700',
     color: theme.text,
   },
   placeholder: {
@@ -440,54 +556,157 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
   },
   contentInner: {
     flexGrow: 1,
-    padding: SPACING.lg,
-    justifyContent: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.xl,
+    paddingBottom: SPACING.xl,
+    justifyContent: 'flex-start',
   },
   instructionBlock: {
-    alignItems: 'center',
-    paddingVertical: SPACING.xl,
+    alignItems: 'flex-start',
+    padding: SPACING.lg,
+    backgroundColor: theme.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: theme.border,
+    shadowColor: theme.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: theme.isDark ? 0.12 : 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  instructionEyebrow: {
+    color: theme.primary,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   instructionTitle: {
-    fontSize: 20,
+    fontSize: 21,
     fontWeight: '700',
     color: theme.text,
-    marginBottom: SPACING.xs,
+    lineHeight: 28,
+    marginTop: SPACING.sm,
+  },
+  instructionDescription: {
+    color: theme.textSecondary,
+    fontSize: 14,
+    lineHeight: 21,
+    marginTop: SPACING.xs,
+  },
+  exampleList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  exampleChip: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 16,
+    backgroundColor: theme.inputBackground,
+    borderWidth: 1,
+    borderColor: theme.border,
   },
   exampleText: {
-    fontSize: 18,
-    color: theme.textMuted,
-    marginTop: SPACING.xs,
+    fontSize: 13,
+    fontWeight: '500',
+    color: theme.textSecondary,
   },
   micContainer: {
     alignItems: 'center',
     marginVertical: SPACING.xl,
   },
   micPulse: {
-    marginBottom: SPACING.sm,
+    width: 110,
+    height: 110,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  micHalo: {
+    position: 'absolute',
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    borderWidth: 1,
+    borderColor: `${theme.primary}40`,
+  },
+  micHaloActive: {
+    borderColor: `${theme.danger}55`,
   },
   micButton: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    backgroundColor: `${theme.primary}18`,
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    backgroundColor: theme.primary,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: theme.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: theme.isDark ? 0.12 : 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   micButtonActive: {
-    backgroundColor: `${theme.danger}25`,
+    backgroundColor: theme.danger,
   },
   micIcon: {
     fontSize: 48,
   },
   micText: {
-    fontSize: 13,
-    color: theme.textMuted,
-    marginBottom: SPACING.md,
+    fontSize: 12,
+    lineHeight: 18,
+    color: theme.textSecondary,
     textAlign: 'center',
+  },
+  statusBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  statusIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.textMuted,
+  },
+  statusIndicatorActive: {
+    backgroundColor: theme.primary,
+  },
+  statusIndicatorError: {
+    backgroundColor: theme.danger,
+  },
+  statusTitle: {
+    color: theme.textSecondary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  statusTitleActive: {
+    color: theme.primary,
+  },
+  statusTitleError: {
+    color: theme.danger,
+  },
+  waveform: {
+    height: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  waveBar: {
+    width: 4,
+    height: 20,
+    borderRadius: 2,
+    backgroundColor: theme.textMuted,
+  },
+  waveBarActive: {
+    backgroundColor: theme.primary,
+  },
+  recordButtonLabel: {
+    color: theme.text,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: SPACING.xs,
   },
   stopButton: {
     marginTop: SPACING.md,
@@ -501,30 +720,34 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
     fontWeight: '700',
   },
   transcriptBox: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.lg,
-    backgroundColor: theme.card,
-    borderRadius: 12,
+    padding: SPACING.md,
+    backgroundColor: theme.surface,
+    borderRadius: 16,
     marginBottom: SPACING.lg,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.accent,
+    borderWidth: 1,
+    borderColor: theme.border,
   },
   transcriptLabel: {
-    fontSize: 12,
-    color: theme.textSecondary,
-    marginBottom: SPACING.sm,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    color: theme.primary,
+    marginBottom: SPACING.xs,
   },
   transcriptText: {
     fontSize: 16,
+    lineHeight: 24,
     color: theme.text,
-    fontStyle: 'italic',
+    fontWeight: '500',
   },
   resultCard: {
     backgroundColor: theme.card,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: SPACING.md,
     marginBottom: SPACING.lg,
     gap: 6,
+    borderWidth: 1,
+    borderColor: theme.border,
   },
   resultTitle: {
     fontSize: 14,
@@ -595,13 +818,18 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
   },
   footer: {
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: SPACING.xs,
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
+    paddingTop: SPACING.lg,
     paddingBottom: SPACING.lg,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.border,
     backgroundColor: theme.surface,
+    shadowColor: theme.shadow,
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: theme.isDark ? 0 : 0.04,
+    shadowRadius: 8,
+    elevation: 4,
   },
   cancelButton: {
     flex: 1,
@@ -633,20 +861,26 @@ const getStyles = (theme: ReturnType<typeof useTheme>) => StyleSheet.create({
   },
   confirmButton: {
     width: '100%',
-    minHeight: 56,
+    minHeight: 52,
     flex: 0,
-    borderRadius: 12,
+    borderRadius: 14,
     backgroundColor: theme.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: SPACING.sm,
+    shadowColor: theme.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: theme.isDark ? 0 : 0.16,
+    shadowRadius: 6,
+    elevation: 2,
   },
   confirmButtonDisabled: {
     opacity: 0.5,
   },
   confirmButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.headerText,
+    fontSize: 15,
+    fontWeight: '700',
+    color: theme.isDark ? '#111827' : theme.headerText,
   },
   hiddenWebView: {
     width: 1,

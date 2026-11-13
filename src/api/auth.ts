@@ -63,9 +63,6 @@ export const registerAccount = (email: string, password: string) =>
 export const loginAccount = (email: string, password: string) =>
   authRequest<AuthSession>('/login', { email, password });
 
-export const loginWithGoogle = (idToken: string) =>
-  authRequest<AuthSession>('/google', { idToken });
-
 export const getCurrentUser = (token: string) =>
   authRequest<{ user: AuthUser }>('/me', undefined, token);
 

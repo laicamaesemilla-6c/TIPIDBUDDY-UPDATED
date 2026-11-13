@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -17,14 +17,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
 import { useTheme } from '../hooks/useTheme';
 import { useAuthStore } from '../store/auth';
 import { completePasswordReset, requestPasswordReset } from '../api/auth';
 import type { SettingsStackParamList } from '../types';
-
-WebBrowser.maybeCompleteAuthSession();
 
 type AuthNavigation = StackNavigationProp<SettingsStackParamList>;
 
@@ -157,59 +153,6 @@ export const AuthWelcomeScreen = () => {
   const theme = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [emailChoiceVisible, setEmailChoiceVisible] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const loginGoogle = useAuthStore((state) => state.loginGoogle);
-  const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-  const androidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
-  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
-  const platformClientId = Platform.OS === 'android'
-    ? androidClientId
-    : Platform.OS === 'ios'
-      ? iosClientId
-      : webClientId;
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId: webClientId || '',
-    androidClientId: androidClientId || '',
-    iosClientId: iosClientId || '',
-  });
-
-  useEffect(() => {
-    if (response?.type !== 'success') return;
-    const idToken = response.authentication?.idToken;
-    if (!idToken) {
-      Alert.alert('Google sign-in failed', 'Google did not return a verified ID token. Please try again.');
-      return;
-    }
-
-    setBusy(true);
-    loginGoogle(idToken)
-      .then(() => navigation.popToTop())
-      .catch((error: unknown) => {
-        Alert.alert('Google sign-in failed', error instanceof Error ? error.message : 'Please try again.');
-      })
-      .finally(() => setBusy(false));
-  }, [loginGoogle, navigation, response]);
-
-  const startGoogleSignIn = () => {
-    if (!platformClientId) {
-      Alert.alert(
-        'Google sign-in is not configured',
-        'Add the Google OAuth client IDs to the root .env file and configure GOOGLE_OAUTH_CLIENT_IDS on the backend.'
-      );
-      return;
-    }
-    if (!request) {
-      Alert.alert('Please wait', 'Google sign-in is still initializing.');
-      return;
-    }
-    setBusy(true);
-    promptAsync()
-      .catch((error: unknown) => {
-        Alert.alert('Google sign-in failed', error instanceof Error ? error.message : 'Please try again.');
-      })
-      .finally(() => setBusy(false));
-  };
-
   const closeEmailChoice = () => setEmailChoiceVisible(false);
   const openEmailScreen = (screen: 'Register' | 'Login') => {
     closeEmailChoice();
@@ -235,19 +178,6 @@ export const AuthWelcomeScreen = () => {
           <Text style={styles.tagline}>Your spending, finally under control</Text>
         </View>
         <View style={styles.welcomeActions}>
-          <TouchableOpacity
-            style={styles.socialButton}
-            onPress={startGoogleSignIn}
-            disabled={busy}
-            accessibilityRole="button"
-          >
-            {busy ? <ActivityIndicator color={theme.primary} /> : (
-              <>
-                <Text style={styles.googleMark}>G</Text>
-                <Text style={styles.socialButtonText}>Continue with Google</Text>
-              </>
-            )}
-          </TouchableOpacity>
           <TouchableOpacity
             style={styles.socialButton}
             onPress={() => setEmailChoiceVisible(true)}
@@ -525,7 +455,6 @@ const createStyles = (theme: ReturnType<typeof useTheme>) =>
       borderWidth: 1,
       borderColor: '#E5E7EB',
     },
-    googleMark: { fontSize: 21, fontWeight: '800', color: '#4285F4' },
     socialButtonText: { color: '#26332A', fontSize: 16, fontWeight: '600' },
     modalBackdrop: { flex: 1, backgroundColor: '#00000066', justifyContent: 'center', padding: 24 },
     choiceCard: { backgroundColor: theme.surface, borderRadius: 24, padding: 24, elevation: 8 },

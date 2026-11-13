@@ -4,6 +4,8 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Animated,
+  useWindowDimensions,
   Alert,
   ActivityIndicator,
   Image,
@@ -103,6 +105,12 @@ export const CameraScannerScreen = ({ route, navigation }: any) => {
   const getStoreName = useGroceryStore((state) => state.getStoreName);
   const cameraRef = useRef<CameraView | null>(null);
   const webViewRef = useRef<WebView | null>(null);
+  const scanLineProgress = useRef(new Animated.Value(0)).current;
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const scanFrameHeight = Math.min(
+    190,
+    Math.max(112, Math.min(screenWidth * 0.42, screenHeight * 0.24))
+  );
 
   const [permission, requestPermission] = useCameraPermissions();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -125,7 +133,14 @@ export const CameraScannerScreen = ({ route, navigation }: any) => {
   const [barcodeError, setBarcodeError] = useState<string | null>(null);
 
   const theme = useTheme();
-  const styles = React.useMemo(() => getStyles(theme), [theme]);
+  const styles = React.useMemo(
+    () => getStyles(theme, scanFrameHeight),
+    [theme, scanFrameHeight]
+  );
+  const scanLineTranslateY = scanLineProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, scanFrameHeight - 34],
+  });
 
   const isScreenFocused = useRef(true);
   const liveScanActive = useRef(true);
@@ -140,6 +155,30 @@ export const CameraScannerScreen = ({ route, navigation }: any) => {
   useEffect(() => {
     console.log('OCR engine: Google MLKit (Native) with Tesseract.js (WebView) Fallback');
   }, []);
+
+  useEffect(() => {
+    if (isBarcodeScanned) {
+      scanLineProgress.setValue(0);
+      return;
+    }
+
+    const scanAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanLineProgress, {
+          toValue: 1,
+          duration: 1800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scanLineProgress, {
+          toValue: 0,
+          duration: 1800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    scanAnimation.start();
+    return () => scanAnimation.stop();
+  }, [isBarcodeScanned, scanLineProgress]);
 
   // Background live scanning loop
   const runLiveScanStep = async () => {
@@ -599,23 +638,32 @@ export const CameraScannerScreen = ({ route, navigation }: any) => {
       />
 
       {/* Layer 2 — Scanning guide box overlay (centered) */}
-      <View style={styles.scanningFrameContainer}>
-        <View style={styles.topLeft} />
-        <View style={styles.topRight} />
-        <View style={styles.bottomLeft} />
-        <View style={styles.bottomRight} />
-        <View style={styles.scanningFrame} />
-      </View>
+      {!isBarcodeScanned && (
+        <View style={styles.scanningFrameContainer}>
+          <View style={styles.scanningFrame}>
+            <Animated.View
+              style={[
+                styles.scanLine,
+                { transform: [{ translateY: scanLineTranslateY }] },
+              ]}
+            />
+          </View>
+          <View style={styles.topLeft} />
+          <View style={styles.topRight} />
+          <View style={styles.bottomLeft} />
+          <View style={styles.bottomRight} />
+        </View>
+      )}
 
       {/* Layer 3 — Live fields panel overlay (top) */}
       <View style={styles.previewPanel}>
         <Text style={styles.previewTitle}>Live Detected Fields</Text>
         <View style={styles.previewRow}>
-          <Text style={styles.previewValue}>🏷️ Name: {liveDetected.name || '—'}</Text>
+          <Text style={styles.previewValue}>Name: {liveDetected.name || '—'}</Text>
           <Text style={styles.previewValue}>
-            💰 Price: {liveDetected.price ? `₱${liveDetected.price}` : '—'}
+            Price: {liveDetected.price ? `₱${liveDetected.price}` : '—'}
           </Text>
-          <Text style={styles.previewValue}>⚖️ Qty: {liveDetected.quantity || '—'}</Text>
+          <Text style={styles.previewValue}>Qty: {liveDetected.quantity || '—'}</Text>
         </View>
         {statusMessage && (
           <Text style={styles.statusText}>{statusMessage}</Text>
@@ -716,7 +764,7 @@ export const CameraScannerScreen = ({ route, navigation }: any) => {
                 onPress={handleUseBarcode}
                 disabled={isProcessing || isBarcodeProcessing}
               >
-                <Text style={styles.useThisButtonText}>✅ Use This</Text>
+                <Text style={styles.useThisButtonText}>Use This</Text>
               </TouchableOpacity>
             ) : !isBarcodeProcessing ? (
               <TouchableOpacity
@@ -735,7 +783,7 @@ export const CameraScannerScreen = ({ route, navigation }: any) => {
             onPress={handleUseLiveDetected}
             disabled={isProcessing || isBarcodeProcessing}
           >
-            <Text style={styles.useThisButtonText}>✅ Use This</Text>
+            <Text style={styles.useThisButtonText}>Use This</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
@@ -753,7 +801,10 @@ export const CameraScannerScreen = ({ route, navigation }: any) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeTouchable}>
           <Text style={styles.closeButton}>✕</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Scan Label</Text>
+        <View style={styles.titleGroup}>
+          <Text style={styles.title}>Scan Barcode</Text>
+          <Text style={styles.subtitle}>Align barcode inside the frame</Text>
+        </View>
         <View style={styles.placeholder} />
       </View>
 
@@ -796,7 +847,7 @@ export const CameraScannerScreen = ({ route, navigation }: any) => {
   );
 };
 
-const getStyles = (theme: any) =>
+const getStyles = (theme: any, scanFrameHeight: number) =>
   StyleSheet.create({
     container: {
       flex: 1,
@@ -810,83 +861,118 @@ const getStyles = (theme: any) =>
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingVertical: SPACING.md,
+      paddingVertical: SPACING.sm,
       paddingHorizontal: SPACING.lg,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      backgroundColor: 'rgba(14, 20, 17, 0.76)',
       zIndex: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: 'rgba(255, 255, 255, 0.16)',
     },
     closeTouchable: {
-      padding: 5,
+      width: 40,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     closeButton: {
       fontSize: 24,
       color: '#FFFFFF',
-      fontWeight: 'bold',
+      fontWeight: '500',
+    },
+    titleGroup: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     title: {
-      fontSize: 20,
-      fontWeight: '600',
+      fontSize: 18,
+      fontWeight: '700',
+      letterSpacing: 0.2,
       color: '#FFFFFF',
     },
+    subtitle: {
+      marginTop: 3,
+      color: 'rgba(255, 255, 255, 0.74)',
+      fontSize: 11,
+      fontWeight: '500',
+      letterSpacing: 0.35,
+    },
     placeholder: {
-      width: 24,
+      width: 40,
     },
     scanningFrameContainer: {
       position: 'absolute',
-      top: '30%',
-      left: '10%',
-      right: '10%',
-      height: '25%',
+      top: '37%',
+      left: 24,
+      right: 24,
+      height: scanFrameHeight,
       justifyContent: 'center',
       alignItems: 'center',
       zIndex: 2,
     },
     topLeft: {
       position: 'absolute',
-      top: -2,
-      left: -2,
-      width: 30,
-      height: 30,
-      borderTopWidth: 3,
-      borderLeftWidth: 3,
+      top: 0,
+      left: 0,
+      width: 28,
+      height: 28,
+      borderTopWidth: 2,
+      borderLeftWidth: 2,
+      borderTopLeftRadius: 18,
       borderColor: theme.accent,
     },
     topRight: {
       position: 'absolute',
-      top: -2,
-      right: -2,
-      width: 30,
-      height: 30,
-      borderTopWidth: 3,
-      borderRightWidth: 3,
+      top: 0,
+      right: 0,
+      width: 28,
+      height: 28,
+      borderTopWidth: 2,
+      borderRightWidth: 2,
+      borderTopRightRadius: 18,
       borderColor: theme.accent,
     },
     bottomLeft: {
       position: 'absolute',
-      bottom: -2,
-      left: -2,
-      width: 30,
-      height: 30,
-      borderBottomWidth: 3,
-      borderLeftWidth: 3,
+      bottom: 0,
+      left: 0,
+      width: 28,
+      height: 28,
+      borderBottomWidth: 2,
+      borderLeftWidth: 2,
+      borderBottomLeftRadius: 18,
       borderColor: theme.accent,
     },
     bottomRight: {
       position: 'absolute',
-      bottom: -2,
-      right: -2,
-      width: 30,
-      height: 30,
-      borderBottomWidth: 3,
-      borderRightWidth: 3,
+      bottom: 0,
+      right: 0,
+      width: 28,
+      height: 28,
+      borderBottomWidth: 2,
+      borderRightWidth: 2,
+      borderBottomRightRadius: 18,
       borderColor: theme.accent,
     },
     scanningFrame: {
       width: '100%',
       height: '100%',
-      borderWidth: 2,
-      borderColor: `${theme.accent}80`,
-      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.48)',
+      borderRadius: 20,
+      backgroundColor: 'rgba(255, 255, 255, 0.035)',
+      overflow: 'hidden',
+      justifyContent: 'center',
+    },
+    scanLine: {
+      position: 'absolute',
+      top: 12,
+      left: 14,
+      right: 14,
+      height: 2,
+      borderRadius: 2,
+      backgroundColor: theme.primary,
+      opacity: 0.9,
     },
     instructionsBox: {
       display: 'none', // replaced by statusText in previewPanel
@@ -896,9 +982,11 @@ const getStyles = (theme: any) =>
       top: 75,
       left: 16,
       right: 16,
-      backgroundColor: 'rgba(0, 0, 0, 0.75)',
-      borderRadius: 12,
-      padding: 12,
+      backgroundColor: 'rgba(14, 20, 17, 0.78)',
+      borderRadius: 16,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'rgba(255, 255, 255, 0.18)',
+      padding: 14,
       zIndex: 5,
     },
     barcodeResultPanel: {
@@ -906,9 +994,11 @@ const getStyles = (theme: any) =>
       top: 210,
       left: 16,
       right: 16,
-      backgroundColor: 'rgba(0, 0, 0, 0.8)',
-      borderRadius: 12,
-      padding: 12,
+      backgroundColor: 'rgba(14, 20, 17, 0.88)',
+      borderRadius: 16,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: 'rgba(255, 255, 255, 0.18)',
+      padding: 14,
       zIndex: 5,
       gap: 4,
       maxHeight: 260,
@@ -925,22 +1015,23 @@ const getStyles = (theme: any) =>
       backgroundColor: '#FFFFFF',
     },
     previewTitle: {
-      color: theme.accent,
-      fontSize: 12,
+      color: '#FFFFFF',
+      fontSize: 11,
       fontWeight: '700',
       textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      letterSpacing: 0.9,
       marginBottom: SPACING.sm,
-      textAlign: 'center',
+      textAlign: 'left',
     },
     previewRow: {
       flexDirection: 'column',
-      gap: 4,
+      gap: 6,
     },
     previewValue: {
       color: '#FFFFFF',
-      fontSize: 14,
-      fontWeight: '600',
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: '500',
     },
     statusText: {
       color: '#FDA4AF',
@@ -951,7 +1042,7 @@ const getStyles = (theme: any) =>
     },
     controls: {
       position: 'absolute',
-      bottom: 40,
+      bottom: 32,
       alignSelf: 'center',
       alignItems: 'center',
       zIndex: 5,
@@ -964,42 +1055,44 @@ const getStyles = (theme: any) =>
       gap: 10,
     },
     scanAgainButton: {
-      backgroundColor: 'rgba(255, 255, 255, 0.18)',
+      backgroundColor: 'rgba(14, 20, 17, 0.78)',
       paddingHorizontal: SPACING.lg,
-      paddingVertical: SPACING.sm,
-      borderRadius: 24,
+      paddingVertical: SPACING.md,
+      borderRadius: 14,
       borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.35)',
+      borderColor: 'rgba(255, 255, 255, 0.32)',
     },
     scanAgainButtonText: {
       color: '#FFFFFF',
       fontSize: 14,
-      fontWeight: '700',
+      fontWeight: '600',
     },
     useBarcodeButton: {
-      backgroundColor: theme.accent || theme.primary,
+      backgroundColor: theme.primary,
       paddingHorizontal: SPACING.lg,
-      paddingVertical: SPACING.sm,
-      borderRadius: 24,
+      paddingVertical: SPACING.md,
+      borderRadius: 14,
     },
     captureButton: {
-      width: 70,
-      height: 70,
-      borderRadius: 35,
-      backgroundColor: '#FFFFFF',
+      width: 76,
+      height: 76,
+      borderRadius: 38,
+      backgroundColor: 'rgba(255, 255, 255, 0.96)',
       justifyContent: 'center',
       alignItems: 'center',
-      elevation: 5,
+      elevation: 4,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.3,
-      shadowRadius: 4,
+      shadowOpacity: 0.24,
+      shadowRadius: 6,
     },
     captureInner: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
+      width: 60,
+      height: 60,
+      borderRadius: 30,
       backgroundColor: theme.primary,
+      borderWidth: 2,
+      borderColor: 'rgba(255, 255, 255, 0.85)',
     },
     captureInnerDisabled: {
       backgroundColor: '#9CA3AF',
@@ -1008,12 +1101,12 @@ const getStyles = (theme: any) =>
       backgroundColor: theme.success || '#22C55E',
       paddingHorizontal: SPACING.xl,
       paddingVertical: SPACING.md,
-      borderRadius: 24,
-      elevation: 5,
+      borderRadius: 14,
+      elevation: 4,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.3,
-      shadowRadius: 4,
+      shadowOpacity: 0.24,
+      shadowRadius: 6,
       minWidth: 150,
       alignItems: 'center',
     },

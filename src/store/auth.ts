@@ -4,7 +4,6 @@ import {
   getCurrentUser,
   isUnauthorizedError,
   loginAccount,
-  loginWithGoogle,
   registerAccount,
   revokeAuthSession,
   type AuthSession,
@@ -20,7 +19,6 @@ interface AuthState {
   initialize: () => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
-  loginGoogle: (idToken: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -71,12 +69,6 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   login: async (email, password) => {
     const session = await loginAccount(email, password);
-    await saveSession(session);
-    set({ token: session.token, user: session.user });
-  },
-
-  loginGoogle: async (idToken) => {
-    const session = await loginWithGoogle(idToken);
     await saveSession(session);
     set({ token: session.token, user: session.user });
   },
